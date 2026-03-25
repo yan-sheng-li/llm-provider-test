@@ -168,20 +168,28 @@
       </template>
       <div class="table-container">
         <el-table :data="testResults" stripe style="width: 100%" size="large">
-          <el-table-column prop="model" label="模型" min-width="150" />
-          <el-table-column prop="success" label="状态" width="100">
+          <el-table-column label="模型" min-width="150">
+            <template #default="{ row }">
+              <span style="font-family: 'Consolas', monospace; font-weight: 500;">{{ row.model }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="100">
             <template #default="{ row }">
               <el-tag :type="row.success ? 'success' : 'danger'">
                 {{ row.success ? '成功' : '失败' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="time" label="耗时 (ms)" width="120" sortable>
+          <el-table-column label="耗时 (ms)" width="120" sortable>
             <template #default="{ row }">
               <el-tag effect="plain">{{ row.time }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="result" label="结果" min-width="300" show-overflow-tooltip />
+          <el-table-column label="结果" min-width="300" show-overflow-tooltip>
+            <template #default="{ row }">
+              {{ row.result }}
+            </template>
+          </el-table-column>
         </el-table>
       </div>
     </el-card>
@@ -307,6 +315,9 @@
 
           // 一次性赋值，确保响应式更新
           testResults.value = allResults;
+          
+          // 调试日志
+          console.log('测试结果:', testResults.value);
 
           resultText.value = `全部测试完成 ✅ 成功：${successCount.value} / ${testResults.value.length}`;
           ElementPlus.ElMessage.success(`测试完成！成功：${successCount.value} / ${testResults.value.length}`);
