@@ -97,11 +97,28 @@
     <!-- 模型选择卡片 -->
     <el-card class="card" v-if="models.length > 0">
       <template #header>
-        <span><el-icon><el-collection /></el-icon> 模型选择</span>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span><el-icon><el-collection /></el-icon> 模型选择</span>
+          <el-space>
+            <el-button size="small" @click="selectAllModels">全选</el-button>
+            <el-button size="small" @click="clearSelection">清空</el-button>
+            <el-tag size="small" type="info">已选：{{ selectedModels.length }}</el-tag>
+          </el-space>
+        </div>
       </template>
       <el-form label-width="100px" size="large">
         <el-form-item label="选择模型">
-          <el-select v-model="selectedModel" placeholder="请选择模型" style="width: 100%;" clearable filterable>
+          <el-select 
+            v-model="selectedModels" 
+            placeholder="请选择模型（支持多选）" 
+            style="width: 100%;" 
+            clearable 
+            filterable
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            :max-collapse-tags="5"
+          >
             <el-option
               v-for="model in models"
               :key="model"
@@ -112,13 +129,14 @@
         </el-form-item>
         <el-form-item>
           <div class="button-group">
-            <el-button type="success" @click="testModel" :loading="loading.single">
-              <el-icon><el-play /></el-icon>
-              测试单个模型
-            </el-button>
-            <el-button type="warning" @click="testAllModels" :loading="loading.all">
+            <el-button 
+              type="primary" 
+              @click="testSelectedModels" 
+              :loading="loading.test"
+              :disabled="selectedModels.length === 0"
+            >
               <el-icon><el-rocket /></el-icon>
-              一键测试所有模型
+              测试选中的模型 ({{ selectedModels.length }})
             </el-button>
           </div>
         </el-form-item>
@@ -180,14 +198,13 @@
         });
 
         const models = ref([]);
-        const selectedModel = ref('');
+        const selectedModels = ref([]);
         const resultText = ref('');
         const testResults = ref([]);
 
         const loading = reactive({
           models: false,
-          single: false,
-          all: false
+          test: false
         });
 
         const successCount = computed(() => {
@@ -210,7 +227,7 @@
             models.value = (data.data || []).map(m => m.id);
 
             if (models.value.length > 0) {
-              selectedModel.value = models.value[0];
+              selectedModels.value = [models.value[0]];
             }
 
             resultText.value = JSON.stringify(data, null, 2);
@@ -258,43 +275,24 @@
           }
         }
 
-        async function testModel() {
-          if (!selectedModel.value) {
-            ElementPlus.ElMessage.warning('请先选择一个模型');
+        async function testSelectedModels() {
+          if (selectedModels.value.length === 0) {
+            ElementPlus.ElMessage.warning('请先选择要测试的模型');
             return;
           }
 
-          loading.single = true;
-          try {
-            const res = await callModel(selectedModel.value);
-            resultText.value = JSON.stringify(res, null, 2);
-            
-            if (res.success) {
-              ElementPlus.ElMessage.success(`模型 ${res.model} 测试成功`);
-            } else {
-              ElementPlus.ElMessage.error(`模型 ${res.model} 测试失败`);
-            }
-          } finally {
-            loading.single = false;
-          }
-        }
-
-        async function testAllModels() {
-          if (models.value.length === 0) {
-            ElementPlus.ElMessage.warning('没有可测试的模型');
-            return;
-          }
-
-          loading.all = true;
+          loading.test = true;
+          testResults.value = [];
           resultText.value = '';
 
           const allResults = [];
           const concurrency = 3;
           let index = 0;
+          const modelsToTest = [...selectedModels.value];
 
           async function worker() {
-            while (index < models.value.length) {
-              const current = models.value[index++];
+            while (index < modelsToTest.length) {
+              const current = modelsToTest[index++];
               const res = await callModel(current);
               allResults.push(res);
             }
@@ -312,20 +310,31 @@
 
           resultText.value = `全部测试完成 ✅ 成功：${successCount.value} / ${testResults.value.length}`;
           ElementPlus.ElMessage.success(`测试完成！成功：${successCount.value} / ${testResults.value.length}`);
-          loading.all = false;
+          loading.test = false;
+        }
+
+        function selectAllModels() {
+          selectedModels.value = [...models.value];
+          ElementPlus.ElMessage.success(`已全选 ${models.value.length} 个模型`);
+        }
+
+        function clearSelection() {
+          selectedModels.value = [];
+          ElementPlus.ElMessage.info('已清空选择');
         }
 
         return {
           config,
           models,
-          selectedModel,
+          selectedModels,
           resultText,
           testResults,
           loading,
           successCount,
           fetchModels,
-          testModel,
-          testAllModels
+          testSelectedModels,
+          selectAllModels,
+          clearSelection
         };
       }
     });
