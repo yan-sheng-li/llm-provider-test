@@ -286,9 +286,9 @@
           }
 
           loading.all = true;
-          testResults.value = [];
           resultText.value = '';
 
+          const allResults = [];
           const concurrency = 3;
           let index = 0;
 
@@ -296,8 +296,7 @@
             while (index < models.value.length) {
               const current = models.value[index++];
               const res = await callModel(current);
-
-              testResults.value.push(res);
+              allResults.push(res);
             }
           }
 
@@ -307,6 +306,9 @@
           }
 
           await Promise.all(workers);
+
+          // 一次性赋值，确保响应式更新
+          testResults.value = allResults;
 
           resultText.value = `全部测试完成 ✅ 成功：${successCount.value} / ${testResults.value.length}`;
           ElementPlus.ElMessage.success(`测试完成！成功：${successCount.value} / ${testResults.value.length}`);
