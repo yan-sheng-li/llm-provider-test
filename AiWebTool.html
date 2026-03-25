@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Provider Tester</title>
+  <!-- Element Plus CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@latest/dist/index.css" />
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #f5f7fa;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .card {
+      margin-bottom: 20px;
+    }
+    .button-group {
+      margin-top: 16px;
+    }
+    .result-textarea {
+      height: 200px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+    }
+    .status-success {
+      color: #67c23a;
+      font-weight: bold;
+    }
+    .status-fail {
+      color: #f56c6c;
+      font-weight: bold;
+    }
+    .table-container {
+      background: #fff;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+  </style>
+  <!-- Vue 3 -->
+  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+  <!-- Element Plus -->
+  <script src="https://cdn.jsdelivr.net/npm/element-plus@latest/dist/index.full.min.js"></script>
+  <!-- Element Plus Icons -->
+  <script src="https://cdn.jsdelivr.net/npm/@element-plus/icons-vue@latest"></script>
+</head>
+<body>
+  <div id="app" class="container">
+    <h1 style="text-align: center; color: #409eff; margin-bottom: 30px;">
+      <el-icon style="vertical-align: middle; margin-right: 8px;"><el-connection /></el-icon>
+      AI Provider Tester
+    </h1>
+
+    <!-- 配置卡片 -->
+    <el-card class="card">
+      <template #header>
+        <span><el-icon><el-setting /></el-icon> 连接配置</span>
+      </template>
+      <el-form label-width="100px" size="large">
+        <el-form-item label="Base URL">
+          <el-input 
+            v-model="config.baseUrl" 
+            placeholder="https://api.xxx.com/v1"
+            clearable
+          >
+            <template #prefix>
+              <el-icon><el-link /></el-icon>
+            </template>
+          </el-input>
+        </el-form-item>
+        <el-form-item label="API Key">
+          <el-input 
+            v-model="config.apiKey" 
+            placeholder="sk-xxxx / ms-xxxx"
+            type="password"
+            show-password
+            clearable
+          >
+            <template #prefix>
+              <el-icon><el-key /></el-icon>
+            </template>
+          </el-input>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="fetchModels" :loading="loading.models">
+            <el-icon><el-refresh /></el-icon>
+            获取模型列表
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <!-- 模型选择卡片 -->
+    <el-card class="card" v-if="models.length > 0">
+      <template #header>
+        <span><el-icon><el-collection /></el-icon> 模型选择</span>
+      </template>
+      <el-form label-width="100px" size="large">
+        <el-form-item label="选择模型">
+          <el-select v-model="selectedModel" placeholder="请选择模型" style="width: 100%;" clearable filterable>
+            <el-option
+              v-for="model in models"
+              :key="model"
+              :label="model"
+              :value="model"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <div class="button-group">
+            <el-button type="success" @click="testModel" :loading="loading.single">
+              <el-icon><el-play /></el-icon>
+              测试单个模型
+            </el-button>
+            <el-button type="warning" @click="testAllModels" :loading="loading.all">
+              <el-icon><el-rocket /></el-icon>
+              一键测试所有模型
+            </el-button>
+          </div>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <!-- 返回结果卡片 -->
+    <el-card class="card" v-if="resultText">
+      <template #header>
+        <span><el-icon><el-document /></el-icon> 返回结果</span>
+      </template>
+      <el-input
+        v-model="resultText"
+        type="textarea"
+        class="result-textarea"
+        readonly
+      />
+    </el-card>
+
+    <!-- 结果表格卡片 -->
+    <el-card class="card" v-if="testResults.length > 0">
+      <template #header>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span><el-icon><el-data-table /></el-icon> 测试结果</span>
+          <el-tag :type="successCount > 0 ? 'success' : 'danger'">
+            成功：{{ successCount }} / {{ testResults.length }}
+          </el-tag>
+        </div>
+      </template>
+      <div class="table-container">
+        <el-table :data="testResults" stripe style="width: 100%" size="large">
+          <el-table-column prop="model" label="模型" min-width="150" />
+          <el-table-column prop="success" label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="row.success ? 'success' : 'danger'">
+                {{ row.success ? '成功' : '失败' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="time" label="耗时 (ms)" width="120" sortable>
+            <template #default="{ row }">
+              <el-tag effect="plain">{{ row.time }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="result" label="结果" min-width="300" show-overflow-tooltip />
+        </el-table>
+      </div>
+    </el-card>
+  </div>
+
+  <script>
+    const { createApp, ref, reactive, computed } = Vue;
+
+    const app = createApp({
+      setup() {
+        const config = reactive({
+          baseUrl: '',
+          apiKey: ''
+        });
+
+        const models = ref([]);
+        const selectedModel = ref('');
+        const resultText = ref('');
+        const testResults = ref([]);
+
+        const loading = reactive({
+          models: false,
+          single: false,
+          all: false
+        });
+
+        const successCount = computed(() => {
+          return testResults.value.filter(r => r.success).length;
+        });
+
+        async function fetchModels() {
+          if (!config.baseUrl || !config.apiKey) {
+            ElementPlus.ElMessage.warning('请先填写 Base URL 和 API Key');
+            return;
+          }
+
+          loading.models = true;
+          try {
+            const res = await fetch(`${config.baseUrl}/models`, {
+              headers: { "Authorization": `Bearer ${config.apiKey}` }
+            });
+
+            const data = await res.json();
+            models.value = (data.data || []).map(m => m.id);
+
+            if (models.value.length > 0) {
+              selectedModel.value = models.value[0];
+            }
+
+            resultText.value = JSON.stringify(data, null, 2);
+            ElementPlus.ElMessage.success(`获取到 ${models.value.length} 个模型`);
+          } catch (err) {
+            resultText.value = err.toString();
+            ElementPlus.ElMessage.error('获取模型列表失败：' + err.message);
+          } finally {
+            loading.models = false;
+          }
+        }
+
+        async function callModel(model) {
+          const start = Date.now();
+
+          try {
+            const res = await fetch(`${config.baseUrl}/chat/completions`, {
+              method: 'POST',
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${config.apiKey}`
+              },
+              body: JSON.stringify({
+                model: model,
+                messages: [{ role: "user", content: "测试连通性" }]
+              })
+            });
+
+            const data = await res.json();
+            const time = Date.now() - start;
+
+            return {
+              model,
+              success: true,
+              time,
+              result: data.choices?.[0]?.message?.content || "OK"
+            };
+          } catch (err) {
+            return {
+              model,
+              success: false,
+              time: Date.now() - start,
+              result: err.toString()
+            };
+          }
+        }
+
+        async function testModel() {
+          if (!selectedModel.value) {
+            ElementPlus.ElMessage.warning('请先选择一个模型');
+            return;
+          }
+
+          loading.single = true;
+          try {
+            const res = await callModel(selectedModel.value);
+            resultText.value = JSON.stringify(res, null, 2);
+            
+            if (res.success) {
+              ElementPlus.ElMessage.success(`模型 ${res.model} 测试成功`);
+            } else {
+              ElementPlus.ElMessage.error(`模型 ${res.model} 测试失败`);
+            }
+          } finally {
+            loading.single = false;
+          }
+        }
+
+        async function testAllModels() {
+          if (models.value.length === 0) {
+            ElementPlus.ElMessage.warning('没有可测试的模型');
+            return;
+          }
+
+          loading.all = true;
+          testResults.value = [];
+          resultText.value = '';
+
+          const concurrency = 3;
+          let index = 0;
+
+          async function worker() {
+            while (index < models.value.length) {
+              const current = models.value[index++];
+              const res = await callModel(current);
+
+              testResults.value.push(res);
+            }
+          }
+
+          const workers = [];
+          for (let i = 0; i < concurrency; i++) {
+            workers.push(worker());
+          }
+
+          await Promise.all(workers);
+
+          resultText.value = `全部测试完成 ✅ 成功：${successCount.value} / ${testResults.value.length}`;
+          ElementPlus.ElMessage.success(`测试完成！成功：${successCount.value} / ${testResults.value.length}`);
+          loading.all = false;
+        }
+
+        return {
+          config,
+          models,
+          selectedModel,
+          resultText,
+          testResults,
+          loading,
+          successCount,
+          fetchModels,
+          testModel,
+          testAllModels
+        };
+      }
+    });
+
+    // 注册所有 Element Plus 图标
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, component);
+    }
+
+    app.use(ElementPlus);
+    app.mount('#app');
+  </script>
+</body>
+</html>
