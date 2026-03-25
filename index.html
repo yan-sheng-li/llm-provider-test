@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,29 +13,36 @@
       padding: 20px;
       background: #f5f7fa;
     }
+
     .container {
       max-width: 1200px;
       margin: 0 auto;
     }
+
     .card {
       margin-bottom: 20px;
     }
+
     .button-group {
       margin-top: 16px;
     }
+
     .result-textarea {
       height: 200px;
       font-family: 'Consolas', 'Monaco', monospace;
       font-size: 13px;
     }
+
     .status-success {
       color: #67c23a;
       font-weight: bold;
     }
+
     .status-fail {
       color: #f56c6c;
       font-weight: bold;
     }
+
     .table-container {
       background: #fff;
       border-radius: 4px;
@@ -48,6 +56,7 @@
   <!-- Element Plus Icons -->
   <script src="https://cdn.jsdelivr.net/npm/@element-plus/icons-vue@latest"></script>
 </head>
+
 <body>
   <div id="app" class="container">
     <h1 style="text-align: center; color: #409eff; margin-bottom: 30px;">
@@ -58,31 +67,25 @@
     <!-- 配置卡片 -->
     <el-card class="card">
       <template #header>
-        <span><el-icon><el-setting /></el-icon> 连接配置</span>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span><el-icon><el-setting /></el-icon> 连接配置</span>
+          <el-button v-if="urlHistory.length > 0" size="small" type="danger" @click="clearUrlHistory">
+            <el-icon><el-delete /></el-icon> 清除历史
+          </el-button>
+        </div>
       </template>
       <el-form label-width="100px" size="large">
         <el-form-item label="Base URL">
-          <el-input 
-            v-model="config.baseUrl" 
-            placeholder="https://api.xxx.com/v1"
-            clearable
-          >
-            <template #prefix>
-              <el-icon><el-link /></el-icon>
-            </template>
-          </el-input>
+          <el-select v-model="config.baseUrl" placeholder="请选择或输入 Base URL" style="width: 100%;" clearable filterable
+            allow-create default-first-option>
+            <el-option v-for="url in urlHistory" :key="url" :label="url" :value="url">
+              <span style="float: left">{{ url }}</span>
+              <span style="float: right; color: #8492a6; font-size: 13px">最近</span>
+            </el-option>
+          </el-select>
         </el-form-item>
         <el-form-item label="API Key">
-          <el-input 
-            v-model="config.apiKey" 
-            placeholder="sk-xxxx / ms-xxxx"
-            type="password"
-            show-password
-            clearable
-          >
-            <template #prefix>
-              <el-icon><el-key /></el-icon>
-            </template>
+          <el-input v-model="config.apiKey" placeholder="sk-xxxx / ms-xxxx" type="password" show-password clearable>
           </el-input>
         </el-form-item>
         <el-form-item>
@@ -108,33 +111,13 @@
       </template>
       <el-form label-width="100px" size="large">
         <el-form-item label="选择模型">
-          <el-select
-            v-model="selectedModels"
-            placeholder="请选择模型（支持多选）"
-            style="width: 100%;"
-            clearable
-            filterable
-            multiple
-            collapse-tags
-            collapse-tags-tooltip
-            :max-collapse-tags="5"
-          >
-            <el-option
-              v-for="model in models"
-              :key="model"
-              :label="model"
-              :value="model"
-            />
+          <el-select v-model="selectedModels" placeholder="请选择模型（支持多选）" style="width: 100%;" clearable filterable
+            multiple collapse-tags collapse-tags-tooltip :max-collapse-tags="5">
+            <el-option v-for="model in models" :key="model" :label="model" :value="model" />
           </el-select>
         </el-form-item>
         <el-form-item label="测试 Prompt">
-          <el-input
-            v-model="testPrompt"
-            placeholder="请输入测试内容"
-            clearable
-            type="textarea"
-            :rows="2"
-          >
+          <el-input v-model="testPrompt" placeholder="请输入测试内容" clearable type="textarea" :rows="2">
             <template #prefix>
               <el-icon><el-chat-dot-round /></el-icon>
             </template>
@@ -142,12 +125,8 @@
         </el-form-item>
         <el-form-item>
           <div class="button-group">
-            <el-button
-              type="primary"
-              @click="testSelectedModels"
-              :loading="loading.test"
-              :disabled="selectedModels.length === 0"
-            >
+            <el-button type="primary" @click="testSelectedModels" :loading="loading.test"
+              :disabled="selectedModels.length === 0">
               <el-icon><el-rocket /></el-icon>
               测试选中的模型 ({{ selectedModels.length }})
             </el-button>
@@ -174,13 +153,7 @@
           </el-space>
         </div>
       </template>
-      <el-input
-        v-model="resultText"
-        type="textarea"
-        class="result-textarea"
-        readonly
-        placeholder="测试结果将显示在这里..."
-      />
+      <el-input v-model="resultText" type="textarea" class="result-textarea" readonly placeholder="测试结果将显示在这里..." />
     </el-card>
 
     <!-- 结果表格卡片 -->
@@ -223,15 +196,19 @@
   </div>
 
   <script>
-    const { createApp, ref, reactive, computed } = Vue;
+    const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
 
     const app = createApp({
       setup() {
+        const STORAGE_KEY = 'ai-provider-tester-config';
+        const MAX_HISTORY = 10;
+
         const config = reactive({
           baseUrl: '',
           apiKey: ''
         });
 
+        const urlHistory = ref([]);
         const models = ref([]);
         const selectedModels = ref([]);
         const testPrompt = ref('测试连通性');
@@ -251,6 +228,75 @@
           if (testResults.value.length === 0) return 0;
           const total = testResults.value.reduce((sum, r) => sum + r.time, 0);
           return Math.round(total / testResults.value.length);
+        });
+
+        // 加载本地存储
+        function loadFromStorage() {
+          try {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+              const data = JSON.parse(saved);
+              if (data.baseUrl) config.baseUrl = data.baseUrl;
+              if (data.apiKey) config.apiKey = data.apiKey;
+              if (data.urlHistory && Array.isArray(data.urlHistory)) {
+                urlHistory.value = data.urlHistory;
+              }
+            }
+          } catch (e) {
+            console.error('加载配置失败:', e);
+          }
+        }
+
+        // 保存到本地存储
+        function saveToStorage() {
+          try {
+            const data = {
+              baseUrl: config.baseUrl,
+              apiKey: config.apiKey,
+              urlHistory: urlHistory.value
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+          } catch (e) {
+            console.error('保存配置失败:', e);
+          }
+        }
+
+        // 添加 URL 到历史记录
+        function addUrlHistory(url) {
+          if (!url) return;
+          // 移除重复项
+          const index = urlHistory.value.indexOf(url);
+          if (index > -1) {
+            urlHistory.value.splice(index, 1);
+          }
+          // 添加到开头
+          urlHistory.value.unshift(url);
+          // 限制数量
+          if (urlHistory.value.length > MAX_HISTORY) {
+            urlHistory.value = urlHistory.value.slice(0, MAX_HISTORY);
+          }
+          saveToStorage();
+        }
+
+        // 清除历史记录
+        function clearUrlHistory() {
+          urlHistory.value = [];
+          saveToStorage();
+          ElementPlus.ElMessage.success('历史记录已清除');
+        }
+
+        // 监听配置变化自动保存
+        watch(() => config.baseUrl, () => {
+          if (config.baseUrl) {
+            addUrlHistory(config.baseUrl);
+          }
+        });
+
+        watch(() => config.apiKey, saveToStorage);
+
+        // 组件挂载时加载
+        onMounted(() => {
+          loadFromStorage();
         });
 
         async function fetchModels() {
@@ -349,7 +395,7 @@
 
           // 一次性赋值，确保响应式更新
           testResults.value = allResults;
-          
+
           // 调试日志
           console.log('测试结果:', testResults.value);
 
@@ -396,6 +442,7 @@
 
         return {
           config,
+          urlHistory,
           models,
           selectedModels,
           testPrompt,
@@ -409,7 +456,8 @@
           selectAllModels,
           clearSelection,
           exportResults,
-          clearResults
+          clearResults,
+          clearUrlHistory
         };
       }
     });
@@ -423,4 +471,5 @@
     app.mount('#app');
   </script>
 </body>
+
 </html>
