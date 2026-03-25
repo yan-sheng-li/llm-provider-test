@@ -108,11 +108,11 @@
       </template>
       <el-form label-width="100px" size="large">
         <el-form-item label="选择模型">
-          <el-select 
-            v-model="selectedModels" 
-            placeholder="请选择模型（支持多选）" 
-            style="width: 100%;" 
-            clearable 
+          <el-select
+            v-model="selectedModels"
+            placeholder="请选择模型（支持多选）"
+            style="width: 100%;"
+            clearable
             filterable
             multiple
             collapse-tags
@@ -127,11 +127,24 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="测试 Prompt">
+          <el-input
+            v-model="testPrompt"
+            placeholder="请输入测试内容"
+            clearable
+            type="textarea"
+            :rows="2"
+          >
+            <template #prefix>
+              <el-icon><el-chat-dot-round /></el-icon>
+            </template>
+          </el-input>
+        </el-form-item>
         <el-form-item>
           <div class="button-group">
-            <el-button 
-              type="primary" 
-              @click="testSelectedModels" 
+            <el-button
+              type="primary"
+              @click="testSelectedModels"
               :loading="loading.test"
               :disabled="selectedModels.length === 0"
             >
@@ -144,15 +157,29 @@
     </el-card>
 
     <!-- 返回结果卡片 -->
-    <el-card class="card" v-if="resultText">
+    <el-card class="card" v-if="resultText || testResults.length > 0">
       <template #header>
-        <span><el-icon><el-document /></el-icon> 返回结果</span>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span><el-icon><el-document /></el-icon> 返回结果</span>
+          <el-space>
+            <el-tag v-if="testResults.length > 0" type="success">
+              平均耗时：{{ avgTime }} ms
+            </el-tag>
+            <el-button size="small" @click="exportResults" :disabled="testResults.length === 0">
+              <el-icon><el-download /></el-icon> 导出 JSON
+            </el-button>
+            <el-button size="small" type="danger" @click="clearResults" :disabled="testResults.length === 0">
+              <el-icon><el-delete /></el-icon> 清除
+            </el-button>
+          </el-space>
+        </div>
       </template>
       <el-input
         v-model="resultText"
         type="textarea"
         class="result-textarea"
         readonly
+        placeholder="测试结果将显示在这里..."
       />
     </el-card>
 
@@ -207,6 +234,7 @@
 
         const models = ref([]);
         const selectedModels = ref([]);
+        const testPrompt = ref('测试连通性');
         const resultText = ref('');
         const testResults = ref([]);
 
@@ -217,6 +245,12 @@
 
         const successCount = computed(() => {
           return testResults.value.filter(r => r.success).length;
+        });
+
+        const avgTime = computed(() => {
+          if (testResults.value.length === 0) return 0;
+          const total = testResults.value.reduce((sum, r) => sum + r.time, 0);
+          return Math.round(total / testResults.value.length);
         });
 
         async function fetchModels() {
@@ -260,7 +294,7 @@
               },
               body: JSON.stringify({
                 model: model,
-                messages: [{ role: "user", content: "测试连通性" }]
+                messages: [{ role: "user", content: testPrompt.value || '测试连通性' }]
               })
             });
 
@@ -334,18 +368,48 @@
           ElementPlus.ElMessage.info('已清空选择');
         }
 
+        function exportResults() {
+          if (testResults.value.length === 0) {
+            ElementPlus.ElMessage.warning('没有可导出的结果');
+            return;
+          }
+
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const filename = `ai-provider-test-${timestamp}`;
+
+          const jsonStr = JSON.stringify(testResults.value, null, 2);
+          const blob = new Blob([jsonStr], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${filename}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+          ElementPlus.ElMessage.success('JSON 导出成功');
+        }
+
+        function clearResults() {
+          resultText.value = '';
+          testResults.value = [];
+          ElementPlus.ElMessage.info('结果已清除');
+        }
+
         return {
           config,
           models,
           selectedModels,
+          testPrompt,
           resultText,
           testResults,
           loading,
           successCount,
+          avgTime,
           fetchModels,
           testSelectedModels,
           selectAllModels,
-          clearSelection
+          clearSelection,
+          exportResults,
+          clearResults
         };
       }
     });
