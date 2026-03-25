@@ -111,7 +111,8 @@
       </template>
       <el-form label-width="100px" size="large">
         <el-form-item label="选择模型">
-          <el-select v-model="selectedModels" placeholder="请选择模型（支持多选）" style="width: 100%;" clearable filterable
+          <el-select v-model="selectedModels" placeholder="请选择或输入模型（支持多选）" style="width: 100%;" clearable filterable
+            allow-create default-first-option
             multiple collapse-tags collapse-tags-tooltip :max-collapse-tags="5">
             <el-option v-for="model in models" :key="model" :label="model" :value="model" />
           </el-select>
